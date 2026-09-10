@@ -1,0 +1,41 @@
+[project]
+name = "cryptodash"
+version = "0.1.0"
+description = "Multi-timeframe crypto trading recommendation dashboard (classic TA + sentiment + ICT) with macro context."
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    # web
+    "fastapi==0.141.*",
+    "uvicorn[standard]==0.52.*",
+    "pydantic-settings>=2.13,<3",
+    "jinja2>=3,<4",              # tiny: server-rendered 404/security pages only
+    # db
+    "psycopg[binary,pool]>=3.2,<4",
+    "sqlalchemy>=2.0,<2.1",      # used for typed query building + migrations portability
+    "embedded-postgres==18.6.*", # zero-install Postgres (socket, local)
+    # security
+    "argon2-cffi>=23,<27",
+    "itsdangerous>=2,<3",
+    "cryptography>=44,<61",      # Fernet at-rest encryption for user secrets
+    # data / analytics  (pandas 3.x verified in the working env)
+    "httpx[socks]==0.28.*",
+    "pandas>=2.2,<4",
+    "numpy>=1.26,<3",
+    # jobs
+    "apscheduler==3.11.*",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.*",
+    "ruff==0.9.*",
+    "pip-audit==2.*",             # dependency supply-chain scanning (make audit)
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["backend/src"]
+testpaths = ["tests"]

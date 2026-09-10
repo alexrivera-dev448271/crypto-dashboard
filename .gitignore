@@ -1,0 +1,29 @@
+# Secrets & local state — never commit
+.env
+*.pem
+*.key
+!deploy/*.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Project data (embedded postgres cluster, caches)
+data/
+backend/data/
+*.db
+
+# Node / frontend
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# CodeGraph local index
+.codegraph/
