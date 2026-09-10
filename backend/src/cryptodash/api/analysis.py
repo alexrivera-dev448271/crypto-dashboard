@@ -4,10 +4,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from cryptodash.analysis.service import normalize_symbol
-from cryptodash.api.deps import client_ip, require_user
+from cryptodash.api.deps import require_user
 from cryptodash.api.errors import BadRequest
 from cryptodash.config import get_settings
 from cryptodash.db import db

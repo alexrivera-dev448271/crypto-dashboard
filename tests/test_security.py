@@ -13,7 +13,6 @@ from __future__ import annotations
 import pytest
 
 # NOTE: import the module so we can patch its time reference for the expiry test.
-import cryptodash.security.auth as auth_mod
 from cryptography.fernet import Fernet
 
 from cryptodash.security.auth import (
@@ -89,23 +88,28 @@ class TestSessions:
         assert b.resolve(token) is None  # different signing key
 
     def test_expired_token_rejected(self):
+        import time as time_mod
+        from cryptodash.security.auth import SESSION_TTL_S
+
         s = SessionService(self.SECRET)
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(auth_mod.time, "time", lambda: 1_000.0)
+            mp.setattr(time_mod, "time", lambda: 1_000.0)
             token, _ = s.issue(9)
-        s.ttl_s = 60  # tiny window so a large time jump is an expiry
+            assert s.resolve(token) == 9  # valid at issue time (sanity)
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(auth_mod.time, "time", lambda: 2_000.0)
+            mp.setattr(time_mod, "time", lambda: 1_000.0 + SESSION_TTL_S + 5)
             assert s.resolve(token) is None
 
     def test_unexpired_token_still_valid(self):
+        import time as time_mod
+        from cryptodash.security.auth import SESSION_TTL_S
+
         s = SessionService(self.SECRET)
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(auth_mod.time, "time", lambda: 1_000.0)
+            mp.setattr(time_mod, "time", lambda: 1_000.0)
             token, _ = s.issue(5)
-        s.ttl_s = 3600
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(auth_mod.time, "time", lambda: 1_050.0)
+            mp.setattr(time_mod, "time", lambda: 1_000.0 + SESSION_TTL_S // 2)
             assert s.resolve(token) == 5
 
 
@@ -156,7 +160,6 @@ class TestRateLimiter:
 
         rl = RateLimiter()
         now = [1_000.0]
-        real_mono = rl_mod.time.monotonic
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(rl_mod.time, "monotonic", lambda: now[0])
             assert rl.check("k", 2, window_s=10) is True

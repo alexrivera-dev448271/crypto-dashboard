@@ -9,11 +9,9 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager, suppress
 
-import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from cryptodash.analysis.service import AnalysisService
 from cryptodash.config import get_settings

@@ -73,15 +73,15 @@ def swing_points(df: pd.DataFrame, left: int = 4, right: int = 4):
     """
     highs: list[dict] = []
     lows: list[dict] = []
-    h, l = df["h"].to_numpy(), df["l"].to_numpy()
+    (h, lo) = df["h"].to_numpy(), df["l"].to_numpy()
     n = len(df)
     for i in range(left, n - right):
         window_h = h[i - left : i + right + 1]
         if h[i] == window_h.max():
             highs.append({"idx": i, "price": float(h[i])})
-        window_l = l[i - left : i + right + 1]
-        if l[i] == window_l.min():
-            lows.append({"idx": i, "price": float(l[i])})
+        window_lo = lo[i - left : i + right + 1]
+        if lo[i] == window_lo.min():
+            lows.append({"idx": i, "price": float(lo[i])})
 
     # always return frames with the documented columns even when empty — engines
     # filter these by `idx`, and a columnless empty frame would KeyError downstream.

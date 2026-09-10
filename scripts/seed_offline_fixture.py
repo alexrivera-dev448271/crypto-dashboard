@@ -45,11 +45,11 @@ def _candles(symbol: str, interval: str, n: int, end_ts: datetime, closes: np.nd
     o = closes * (1 + np.random.default_rng(SEED).normal(0, 4e-5, n))
     wick = np.abs(np.random.default_rng(SEED + 7).normal(0, 0.35, n)) * vol_mult
     h = np.maximum(o, closes) * (1 + wick)
-    l = np.minimum(o, closes) * (1 - wick)
+    low = np.minimum(o, closes) * (1 - wick)
     vbase = {"5m": 90.0, "1h": 2_600.0, "4h": 10_500.0, "1d": 42_000.0}[interval]
     v = np.random.default_rng(SEED + 13).gamma(2.0, 1.0, n) * (vbase / 2.0)
     return [(symbol, interval, tms, round(float(o[i]), 8), round(float(h[i]), 8),
-             round(float(l[i]), 8), round(float(closes[i]), 8), float(v[i])) for i, tms in enumerate(tsms)]
+             round(float(low[i]), 8), round(float(closes[i]), 8), float(v[i])) for i, tms in enumerate(tsms)]
 
 
 def _daily(name: str, n_days: int, end_ts: datetime, closes: np.ndarray) -> list[tuple]:

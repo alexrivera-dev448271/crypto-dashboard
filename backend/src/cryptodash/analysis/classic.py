@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from cryptodash.analysis.indicators import (
-    atr, bollinger, ema, macd, obv, rolling_return_pct, rsi, sma, stoch_rsi, swing_points,
+    atr, bollinger, ema, macd, rolling_return_pct, rsi, stoch_rsi,
 )
 
 log = logging.getLogger("cryptodash.analysis.classic")
@@ -152,8 +152,6 @@ def score(df: pd.DataFrame) -> EngineResult:
 
     # confidence from data coverage + factor agreement
     coverage = min(1.0, len(df) / 250.0)
-    biases = [f.bias for f in factors if f.value is not None]
-    agreement = abs(float(np.mean(biases))) if biases else 0.0
     confidence = _clamp(0.4 * coverage + 0.6 * min(1.0, abs(score_val) / 50.0))
 
     return EngineResult("classic", direction, score_val, float(confidence), factors)

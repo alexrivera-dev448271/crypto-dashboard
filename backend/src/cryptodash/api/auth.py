@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from cryptodash.api.deps import SESSION_COOKIE, auth_attempts_limited, require_user
-from cryptodash.api.errors import BadRequest, Conflict, Unauthorized
+from cryptodash.api.errors import Conflict, Unauthorized
 from cryptodash.config import get_settings
 from cryptodash.db import db
 from cryptodash.security.auth import check_password_strength, hash_password, verify_password

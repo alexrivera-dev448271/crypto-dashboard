@@ -35,7 +35,7 @@ def score(df: pd.DataFrame) -> EngineResult:
     if df is None or len(df) < 80:
         return EngineResult("ict", "neutral", 0.0, 0.1, [Factor("coverage", 0, 0.0, "not enough bars for ICT structure")])
 
-    c, h, l = df["c"], df["h"], df["l"]
+    c = df["c"]
     last = float(c.iloc[-1])
     atr_s = atr_indicator(df)
     a = max(float(atr_s.iloc[-1]), 1e-9)

@@ -86,6 +86,6 @@ def auth_attempts_limited():
         if not rate_limiter.check(key, s.rl_auth_per_min):
             from cryptodash.api.errors import RateLimited
 
-            raise RateLimited(f"too many auth attempts — retry in a minute")
+            raise RateLimited("too many auth attempts — retry in a minute")
 
     return _dep

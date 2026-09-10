@@ -126,7 +126,7 @@ def test_cross_tenant_write_is_discarded_by_policy(db, users):
             except psycopg.errors.InsufficientPrivilege as exc:  # noqa: PERF203 - explicit guard below
                 assert "row-level security policy" in str(exc)
                 blocked = True
-            assert blocked, f"RLS did not block cross-tenant write (no error raised)"
+            assert blocked, "RLS did not block cross-tenant write (no error raised)"
 
         # Confirm from a superuser view (bypasses RLS — it would see ANY orphan row),
         # and from tenant 1's own scoped view.

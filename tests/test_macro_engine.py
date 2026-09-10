@@ -158,9 +158,9 @@ class TestIctSweepsRegression:
         o = np.concatenate([[close[0]], close[:-1]])
         spread = abs(rng.normal(0, 0.008, n))
         h = np.maximum(o, close) * (1 + spread)
-        l = np.minimum(o, close) * (1 - spread)
+        low = np.minimum(o, close) * (1 - spread)
         v = rng.uniform(1e6, 3e7, n)
-        return pd.DataFrame({"o": o, "h": h, "l": l, "c": close, "v": v})
+        return pd.DataFrame({"o": o, "h": h, "l": low, "c": close, "v": v})
 
     def test_score_runs_and_is_bounded(self):
         from cryptodash.analysis.ict import score as ict_score
@@ -170,43 +170,49 @@ class TestIctSweepsRegression:
 
     def test_low_liquidity_sweep_bullish(self):
         """A wick below a confirmed swing low that closes back inside = bullish stop hunt."""
-        from cryptodash.analysis.ict import _liquidity_sweeps
         n = 120
         base = np.full(n, 100.0)
-        c = base.copy(); o = base.copy()
-        h = (base + 1.0).copy(); l = (base - 1.0).copy()
+        c = base.copy()
+        o = base.copy()
+        h = (base + 1.0).copy()
+        low = (base - 1.0).copy()
 
         # confirmed swing low at bar n-8: a clear local minimum ...
         for i in range(n - 9, n - 7):
-            l[i] = base[i]; h[i] = base[i] + 2.0
-        l[n - 8] = base[n - 8] - 3.0; h[n - 8] = base[n - 8] - 1.5
+            low[i] = base[i]
+            h[i] = base[i] + 2.0
+        low[n - 8] = base[n - 8] - 3.0
+        h[n - 8] = base[n - 8] - 1.5
         # ... then one bar later wicks below it and closes back above → stop hunt.
         idx = n - 6
-        l[idx] = base[idx] - 4.5   # breaks the (base-3) swing low by >0.25 ATR
+        low[idx] = base[idx] - 4.5   # breaks the (base-3) swing low by >0.25 ATR
         h[idx] = base[idx] + 1.0
 
-        df = pd.DataFrame({"o": o, "h": h, "l": l, "c": c, "v": np.full(n, 1e6)})
-        bias, note = _liquidity_sweeps(df, *[self._swings(df) for _ in range(0)]) if False else self._sweeps_on(df)
+        df = pd.DataFrame({"o": o, "h": h, "l": low, "c": c, "v": np.full(n, 1e6)})
+        bias, note = self._sweeps_on(df)
         assert bias > 0.0 and "low-liquidity sweep" in note, (bias, note)
 
     def test_high_liquidity_sweep_bearish(self):
         """Mirror image: wick above a confirmed swing high that closes back inside = bearish."""
-        from cryptodash.analysis.ict import _liquidity_sweeps
         n = 120
         base = np.full(n, 100.0)
-        c = base.copy(); o = base.copy()
-        h = (base + 1.0).copy(); l = (base - 1.0).copy()
+        c = base.copy()
+        o = base.copy()
+        h = (base + 1.0).copy()
+        low = (base - 1.0).copy()
 
         # confirmed swing high at bar n-8 ...
         for i in range(n - 9, n - 7):
-            h[i] = base[i]; l[i] = base[i] - 2.0
-        h[n - 8] = base[n - 8] + 3.0; l[n - 8] = base[n - 8] + 1.5
+            h[i] = base[i]
+            low[i] = base[i] - 2.0
+        h[n - 8] = base[n - 8] + 3.0
+        low[n - 8] = base[n - 8] + 1.5
         # ... then one bar wicks above it and closes back below → stop hunt.
         idx = n - 6
         h[idx] = base[idx] + 4.5
-        l[idx] = base[idx] - 1.0
+        low[idx] = base[idx] - 1.0
 
-        df = pd.DataFrame({"o": o, "h": h, "l": l, "c": c, "v": np.full(n, 1e6)})
+        df = pd.DataFrame({"o": o, "h": h, "l": low, "c": c, "v": np.full(n, 1e6)})
         bias, note = self._sweeps_on(df)
         assert bias < 0.0 and "high-liquidity sweep" in note, (bias, note)
 
@@ -221,18 +227,22 @@ class TestIctSweepsRegression:
         """A clean unfilled bullish FVG that price has since rallied above → support magnet below."""
         from cryptodash.analysis.ict import _fvg_magnet
         n = 100
-        c = np.full(n, 100.0); o = c.copy()
-        h = (c + 0.5).copy(); l = (c - 0.5).copy()
+        c = np.full(n, 100.0)
+        o = c.copy()
+        h = (c + 0.5).copy()
+        low = (c - 0.5).copy()
 
-        # bullish FVG centred on bar i=40: low[i+1]=l[41] > high[i-1]=h[39].
+        # bullish FVG centred on bar i=40: low[i+1]=low[41] > high[i-1]=h[39].
         h[39] = 100.0            # high of bar i-1 (gap bottom) -> zone bot
-        l[41] = 105.0            # low of bar i+1 (gap top)     -> zone top; 105 > 100 ✓
+        low[41] = 105.0          # low of bar i+1 (gap top)     -> zone top; 105 > 100 ✓
         h[41] = 106.0
         # price then rallies and holds ABOVE the gap, staying within 3*ATR (a=1):
-        c[42:] = 107.0; o[42:] = 106.5
-        h[42:] = 107.5; l[42:] = 106.5     # lows stay > top(105) → the gap is never filled/touched
+        c[42:] = 107.0
+        o[42:] = 106.5
+        h[42:] = 107.5
+        low[42:] = 106.5         # lows stay > top(105) → the gap is never filled/touched
 
-        df = pd.DataFrame({"o": o, "h": h, "l": l, "c": c, "v": np.full(n, 1e6)})
+        df = pd.DataFrame({"o": o, "h": h, "l": low, "c": c, "v": np.full(n, 1e6)})
         last = float(c[-1])                        # price above the unfilled bullish gap
         bias, note = _fvg_magnet(df, last, a=1.0)
         assert -1.0 <= bias <= 1.0 and "bullish" in note.lower(), (bias, note)

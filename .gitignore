@@ -27,3 +27,6 @@ Thumbs.db
 
 # CodeGraph local index
 .codegraph/
+
+# throwaway exploration scripts
+backend/probe_*.py

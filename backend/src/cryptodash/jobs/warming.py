@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import random
-from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger

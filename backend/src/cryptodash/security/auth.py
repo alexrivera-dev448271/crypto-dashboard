@@ -11,12 +11,10 @@ Design:
 from __future__ import annotations
 
 import re
-import time
 from dataclasses import dataclass
 
 import argon2
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-from pydantic import BaseModel, EmailStr
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 

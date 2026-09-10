@@ -11,7 +11,6 @@ net composite (1.0 = all timeframes agree → highest-confidence signal).
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 # TF hierarchy weight: larger = more structural. Sum doesn't need to be 1.
@@ -120,5 +119,5 @@ def _verdict_note(direction: str, alignment: float, confidence: float) -> str:
     return {
         "long": f"Bullish composite — {agree} ({strength} conviction).",
         "short": f"Bearish composite — {agree} ({strength} conviction).",
-        "neutral": f"No structural edge right now — timeframes conflict; stand aside or use tight invalidations.",
+        "neutral": "No structural edge right now — timeframes conflict; stand aside or use tight invalidations.",
     }[direction]
