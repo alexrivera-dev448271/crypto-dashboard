@@ -11,9 +11,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Project data (embedded postgres cluster, caches)
-data/
+# Project data (embedded postgres cluster, caches) — anchor these to the repo root.
+# A bare `data/` here would also match the *source package* backend/src/cryptodash/data/.
+/data/
 backend/data/
+!backend/src/cryptodash/data/
 *.db
 
 # Node / frontend
