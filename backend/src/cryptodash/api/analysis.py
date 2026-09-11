@@ -80,9 +80,9 @@ async def history(request: Request, user=Depends(require_user),
     """Persisted recommendation rows for this user (RLS-scoped server-side)."""
     params: list[object] = [user["id"]]
     where = "owner_id=%s"
-    if symbol:
+    if symbol and (sym_f := normalize_symbol(symbol)):
         where += " AND symbol=%s"
-        params.append(normalize_symbol(symbol))
+        params.append(sym_f)
 
     async with db.tenant(user["id"]) as conn:
         rows = await db.fetch_all(

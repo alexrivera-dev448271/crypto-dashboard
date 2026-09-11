@@ -23,6 +23,7 @@ function loadAuto(): number {
 export function App() {
   const [me, setMe] = useState<Me>(undefined as unknown as Me); // undefined = loading
   const [sym, setSym] = useState("BTCUSDT");
+  const [draft, setDraft] = useState("");   // live text in the custom pair box (owned here so Analyze can use it)
   const [tfs, setTfs] = useState<string[]>(["1h", "4h", "1d"]);
   const [result, setResult] = useState<RecommendationResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,6 +84,28 @@ export function App() {
     localStorage.setItem(AUTO_KEY, String(sec));
   }
 
+  /** Resolve the symbol to analyse: prefer live text in the custom box (if any), else the committed symbol. */
+  function activeSym(): string {
+    const t = draft.trim().toUpperCase();
+    if (!t) return sym;
+    setSym(t); // commit it so charts, history and auto-refresh follow along
+    return t;
+  }
+
+  /** Commit a symbol (dropdown / history pick) so Analyse targets it; clear any stale typed pair. */
+  function selectPair(s: string) {
+    if (!s || !s.trim()) return;
+    setSym(s);
+    setDraft("");
+  }
+
+  /** Enter in the custom box: commit the typed symbol and analyse immediately. */
+  function submitTyped() {
+    const t = draft.trim().toUpperCase();
+    if (!t) return;
+    run(t, tfs);
+  }
+
   if (me === undefined) return <div className="boot">loading…</div>;
   if (!me) return <AuthScreen onAuthed={(u) => setMe(u)} />;
 
@@ -127,8 +150,16 @@ export function App() {
         </header>
 
         <section className="controls">
-          <PairPicker sym={sym} tfs={tfs} onSym={setSym} onTfs={setTfs} />
-          <button className="primary" disabled={busy || !me} onClick={() => run(sym, tfs)}>
+          <PairPicker
+            sym={sym}
+            tfs={tfs}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSelectPair={selectPair}
+            onSubmitPair={submitTyped}
+            onTfs={setTfs}
+          />
+          <button className="primary" disabled={busy || !me} onClick={() => run(activeSym(), tfs)}>
             {busy ? "analysing…" : result ? "re-analyse" : "analyse"}
           </button>
         </section>
@@ -167,7 +198,7 @@ export function App() {
         )}
 
         <ErrorBoundary label="Recent runs">
-          <HistoryStrip symbol={sym} onPick={(s) => setSym(s)} />
+          <HistoryStrip symbol={sym} onPick={(s) => selectPair(s)} />
         </ErrorBoundary>
 
         <footer className="foot">

@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-
 const PRESETS: [string, string][] = [
   ["BTC/USDT", "BTCUSDT"],
   ["ETH/USDT", "ETHUSDT"],
@@ -16,64 +14,50 @@ const PRESETS: [string, string][] = [
 const ALL_INTERVALS = ["5m", "1h", "4h", "1d"];
 
 interface Props {
+  /** Currently committed symbol (what will be analysed if no typed pair is present). */
   sym: string;
   tfs: string[];
-  onSym: (s: string) => void;
-  onTfs: (t: string[]) => void;
+  /** Free-text draft in the custom box. Owned by the parent so Analyze can use it live. */
+  draft: string;
+  onDraftChange: (value: string) => void;
+  /** Dropdown selection → commit that symbol and drop any stale typed pair. Does not auto-analyse. */
+  onSelectPair: (symbol: string) => void;
+  /** Analyse now — parent prefers the typed draft over `sym` when present. */
+  onSubmitPair: () => void;
+  onTfs: (tfs: string[]) => void;
 }
 
-export function PairPicker({ sym, tfs, onSym, onTfs }: Props) {
-  const [custom, setCustom] = useState("");
-  const [validPairs, setValidPairs] = useState<Set<string>>(new Set(PRESETS.map(([, s]) => s)));
-
-  // discover extra liquid pairs from Binance (best-effort; presets always available offline)
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/analysis/symbols", { credentials: "same-origin" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: unknown) => {
-        if (cancelled || !j) return;
-        const obj = j as { presets?: Record<string, string[]> };
-        const arr = obj?.presets && Array.isArray(obj.presets["major_pairs"]) ? obj.presets["major_pairs"] : [];
-        setValidPairs(new Set([...PRESETS.map(([, s]) => s), ...arr]));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function submitCustom() {
-    const cleaned = custom.trim().toUpperCase();
-    if (!cleaned) return;
-    // normalize: BTC/USDT → BTCUSDT, btcusdt → BTCUSDT
-    let normalized = cleaned.replace(/[^A-Z0-9]/g, "");
-    onSym(normalized);
-    setCustom("");
-  }
+/**
+ * Presentational pair/timeframe picker. The typed text (`draft`) and committed
+ * symbol live in the parent so the Analyze button can act on exactly what the
+ * user last typed — even without pressing Enter first.
+ */
+export function PairPicker({ sym, tfs, draft, onDraftChange, onSelectPair, onSubmitPair, onTfs }: Props) {
+  const known = PRESETS.some(([, code]) => code === sym);
 
   function toggleTf(tf: string) {
     const next = tfs.includes(tf) ? tfs.filter((t) => t !== tf) : [...tfs, tf];
     onTfs(next.length ? ALL_INTERVALS.filter((a) => next.includes(a)) : ["1h"]);
   }
 
-  const known = PRESETS.some(([, s]) => s === sym);
-
   return (
     <div className="picker">
-      <select value={known || !custom ? sym : ""} onChange={(e) => onSym(e.target.value)}>
+      {/* The dropdown always reflects the committed symbol; a non-preset symbol is added as its own option. */}
+      <select value={draft.trim() ? "" : sym} onChange={(e) => onSelectPair(e.target.value)}>
         {PRESETS.map(([label, code]) => (
-          <option key={code} value={code}>{label}</option>
+          <option key={code} value={code}>
+            {label}
+          </option>
         ))}
-        {!known && <option value={sym}>{sym}</option>}
+        {!known && draft.trim() === "" && <option value={sym}>{sym}</option>}
       </select>
 
       <input
         className="custom-input"
         placeholder="or type any pair… (e.g. ARBUSDT)"
-        value={custom}
-        onChange={(e) => setCustom(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && submitCustom()}
+        value={draft}
+        onChange={(e) => onDraftChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onSubmitPair()}
       />
 
       <div className="tf-group">

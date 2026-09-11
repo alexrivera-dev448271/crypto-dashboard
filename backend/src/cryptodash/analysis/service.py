@@ -206,7 +206,7 @@ class AnalysisService:
 # ── helpers ────────────────────────────────────────────────────────────────
 def normalize_symbol(symbol: str) -> str:
     s = symbol.strip().upper().replace(" ", "").replace("-", "")
-    return s or "BTCUSDT"
+    return s  # never silently substitute a different pair — callers validate emptiness
 
 
 def _perp_symbol(symbol_u: str) -> str:

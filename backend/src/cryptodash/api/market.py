@@ -51,15 +51,17 @@ async def candles(request: Request, user=Depends(require_user),
                   interval: str = Query(default="1h"), limit: int = Query(default=200, le=600)) -> dict:
     if interval not in INTERVALS:
         raise BadRequest(f"interval must be one of {sorted(INTERVALS)}")
+    sym = normalize_symbol(symbol)
+    if not sym:
+        raise BadRequest("symbol is required")
     service = request.app.state.service
     try:
-        df = await service.fetcher.candles(normalize_symbol(symbol), interval, limit)
+        df = await service.fetcher.candles(sym, interval, limit)
     except DataError as exc:
         from cryptodash.api.errors import UpstreamError
 
         raise UpstreamError(str(exc)) from exc
-    return {"symbol": normalize_symbol(symbol), "interval": interval,
-            "candles": _df_to_records(df)}
+    return {"symbol": sym, "interval": interval, "candles": _df_to_records(df)}
 
 
 @router.get("/macro")
