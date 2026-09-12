@@ -3,15 +3,16 @@ import { dirColor, dirLabel, fmtPct, scoreBar } from "../ui";
 
 interface Props {
   timeframes: RecommendationResponse["timeframes"];
+  symbol?: string;
 }
 
-export function TfGrid({ timeframes }: Props) {
+export function TfGrid({ timeframes, symbol }: Props) {
   return (
     <div className="tf-grid">
       {timeframes.map((tf) => (
         <article key={tf.interval} className={`card tf-card dir-${tf.classic.direction}`}>
           <header>
-            <h3>{tf.interval.toUpperCase()}</h3>
+            <h3>{symbol ? `${symbol} · ` : ""}{tf.interval.toUpperCase()}</h3>
             <span className={`pill ${tf.classic.direction}`} style={{ color: "var(--bg)" }}>
               {dirLabel(tf.classic.direction)} {Math.round(tf.classic.score)}
             </span>
@@ -26,6 +27,7 @@ export function TfGrid({ timeframes }: Props) {
                   <span>{eng === "classic" ? "Classic TA" : "ICT / smart money"}</span>
                   <b style={{ color: dirColor(e.direction) }}>{Math.round(e.score)}</b>
                 </div>
+                <div className="bar-cap">{eng === "classic" ? "classic technical score (short ⇄ long)" : "ICT / smart-money score (short ⇄ long)"}</div>
                 <div className="track mini">
                   <i style={{ ...bar, background: dirColor(e.direction) }} />
                 </div>

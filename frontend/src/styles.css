@@ -79,7 +79,9 @@ label { display:block; font-size: 12px; letter-spacing: 0.3px; color: var(--mute
 
 /* ── alerts / footers ─────────────────── */
 .alert { background: #2a1518; border: 1px solid #7f1d1d; color: #fca5a5; padding: 10px 16px; border-radius: 9px; }
-.foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+.foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; line-height: 1.7;}
+.foot a { color: var(--accent); text-decoration:none; }
+.foot a:hover { text-decoration: underline; }
 
 /* ── composite verdict card ─────────────── */
 .composite-head { display: flex; gap: 30px; align-items: center; flex-wrap: wrap; }
@@ -143,6 +145,20 @@ h3 { margin: 0 0 8px; font-weight: 700; }
 .asset-metrics { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-top:8px;}
 .metric i { display:block; text-transform:capitalize; color:var(--muted); font-size:11.5px;}
 .spark { width: 90px !important; height: 32px; }
+.spark-wrap { display:inline-flex; flex-direction:column; gap:2px; align-items:flex-start; margin-left:6px;}
+.spark-wrap i { font-style:normal; color:var(--muted); font-size:10.5px; letter-spacing:.2px;}
+
+/* ── bar captions & pair labels ─────────── */
+.bar-cap { color: var(--muted); font-size: 11px; line-height: 1.45; margin-top: 3px; letter-spacing: .2px; }
+.panel-sub { margin-top: 2px; padding: 6px 0 0; border-top: 1px dashed var(--border); max-width: 72ch;}
+.scale-cap { margin-top: 4px;}
+.sym-line { display:flex; align-items:baseline; gap:8px; }
+.sym-line .sym { font-size: 19px; letter-spacing:.3px; color: var(--fg);}
+
+/* chart legend (candle colour key) */
+.chart-scale .legend { flex:1; text-align:center; color:var(--muted); display:inline-flex; align-items:center; gap:6px; justify-content:center;}
+.legend i.leg { display:inline-block; width:9px; height:9px; border-radius:2px;}
+.legend i.leg.up{ background:#34d399;} .legend i.leg.down{ background:#f87171;}
 
 /* ── history strip ─────────────────────── */
 .hist-chips { display:flex; flex-wrap:wrap; gap:8px; margin-top: 4px;}

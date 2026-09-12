@@ -14,7 +14,10 @@ export function CompositeCard({ composite }: Props) {
     <div className="card composite" style={{ borderColor: dirColor(composite.direction) }}>
       <div className="composite-head">
         <div>
-          <div className="muted small">{composite.symbol}</div>
+          <div className="sym-line">
+            <span className="muted small">signal for</span>
+            <b className="sym">{composite.symbol}</b>
+          </div>
           <div className="verdict" style={{ color: dirColor(composite.direction) }}>
             {dirLabel(composite.direction)}
             <span className="score-pill" style={{ background: dirColor(composite.direction) }}>{Math.round(composite.score)}</span>
@@ -24,6 +27,7 @@ export function CompositeCard({ composite }: Props) {
         <div className="conf-block">
           <div className="muted small">confidence</div>
           <div className="meter"><i style={{ width: `${confPct}%` }} /></div>
+          <div className="bar-cap">how strong the data agrees (0–100%)</div>
           <div className="small muted">{confPct}% · {composite.timeframes_analysed} timeframes agree {aligned}%</div>
         </div>
 
@@ -37,9 +41,11 @@ export function CompositeCard({ composite }: Props) {
               </li>
             ))}
           </ul>
+          <div className="bar-cap">{composite.symbol} — each timeframe's net score</div>
         </div>
       </div>
 
+      <div className="bar-cap scale-cap">net composite score — blend of every timeframe & engine for {composite.symbol} (short ⇄ long)</div>
       <div className="scale">
         <span>SHORT</span>
         <div className="track">

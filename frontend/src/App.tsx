@@ -176,15 +176,15 @@ export function App() {
                 <CandleChart symbol={sym} interval={tfs[0] || "1h"} key={candleKey} />
               </ErrorBoundary>
               <ErrorBoundary label="Sentiment panel">
-                <SentimentBar sentiment={result.sentiment} fngNow={result.fear_greed_now} />
+                <SentimentBar sentiment={result.sentiment} fngNow={result.fear_greed_now} symbol={result.composite.symbol} />
               </ErrorBoundary>
             </div>
             <ErrorBoundary label="Timeframe grid">
-              <TfGrid timeframes={result.timeframes} />
+              <TfGrid timeframes={result.timeframes} symbol={result.composite.symbol} />
             </ErrorBoundary>
             {result.macro && (
               <ErrorBoundary label="Macro relations panel">
-                <MacroPanel macro={result.macro} />
+                <MacroPanel macro={result.macro} symbol={result.composite.symbol} />
               </ErrorBoundary>
             )}
           </>
@@ -204,6 +204,11 @@ export function App() {
         <footer className="foot">
           Educational signal engine — not financial advice. Data: Binance · Yahoo · alternative.me
           {result && ` · last run ${(result.elapsed_ms / 1000).toFixed(1)}s`}
+          <br />
+          By{" "}
+          <a href="https://github.com/alexrivera-dev448271" target="_blank" rel="noopener noreferrer">
+            @alexrivera-dev448271
+          </a>
         </footer>
 
         {settingsOpen && (

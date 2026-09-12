@@ -23,7 +23,7 @@ export function CandleChart({ symbol, interval }: Props) {
   const w = 720;
   const h = 240;
 
-  if (err) return <div className="card chart-card"><h3>Chart</h3><p className="warn small">chart unavailable: {err}</p></div>;
+  if (err) return <div className="card chart-card"><h3>{symbol} · {interval}</h3><p className="warn small">chart unavailable: {err}</p></div>;
   if (!candles || candles.length === 0)
     return (
       <div className="card chart-card">
@@ -70,6 +70,9 @@ export function CandleChart({ symbol, interval }: Props) {
       </svg>
       <div className="chart-scale">
         <span>{hi.toFixed(2)}</span>
+        <span className="legend" title="Candle colour = whether that bar closed above or below its open">
+          <i className="leg up" />bullish close · <i className="leg down" />bearish close — {symbol} last {candles.length} × {interval} bars (high/low shown)
+        </span>
         <span>{lo.toFixed(2)}</span>
       </div>
     </div>

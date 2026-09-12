@@ -3,18 +3,20 @@ import { dirColor, fmtNum, fmtPct } from "../ui";
 
 interface Props {
   macro: MacroPayload;
+  symbol?: string;
 }
 
-export function MacroPanel({ macro }: Props) {
+export function MacroPanel({ macro, symbol }: Props) {
   return (
     <div className="card macro-card">
       <header>
-        <h3>Macro relations</h3>
+        <h3>Macro relations{symbol ? ` · ${symbol}` : ""}</h3>
         <span className={`pill ${macro.direction}`} style={{ color: "var(--bg)" }}>
           {macro.score >= 0 ? "+" : ""}
           {Math.round(macro.score)} · conf {Math.round(macro.confidence * 100)}%
         </span>
       </header>
+      <p className="bar-cap panel-sub">how M2 money supply, gold, Brent crude and Bitcoin currently relate to {symbol || "the pair"} — bias: {macro.direction}</p>
 
       <div className="macro-grid">
         {macro.assets.map((a) => (
@@ -37,7 +39,7 @@ export function MacroPanel({ macro }: Props) {
             <div className="asset-metrics">
               <Metric label="30d" value={fmtPct(a.change_30d_pct)} />
               <Metric label="corr 90d" value={a.corr_90d != null ? a.corr_90d.toFixed(2) : "—"} hint={a.name === "m2_usd" || a.name === "m2_sl" ? "vs BTC" : undefined} />
-              {a.spark && <Sparkline data={a.spark} />}
+              {a.spark && <span className="spark-wrap"><Sparkline data={a.spark} /><i>30-day trend</i></span>}
             </div>
 
             {Object.entries(a.extra).map(([k, v]) => (

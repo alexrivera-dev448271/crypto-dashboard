@@ -4,22 +4,24 @@ import { dirColor, scoreBar } from "../ui";
 interface Props {
   sentiment: EngineResult;
   fngNow: number | null;
+  symbol?: string;
 }
 
-export function SentimentBar({ sentiment, fngNow }: Props) {
+export function SentimentBar({ sentiment, fngNow, symbol }: Props) {
   const bar = scoreBar(sentiment.score);
   return (
     <div className="card sent-card">
-      <h3>Sentiment &amp; positioning</h3>
+      <h3>Sentiment &amp; positioning{symbol ? ` · ${symbol}` : ""}</h3>
       <div className="sent-row">
         <div>
-          <div className="muted small">crowd index now {fngNow != null ? `· F&G ${Math.round(fngNow)}` : ""}</div>
+          <div className="muted small">{symbol ? `${symbol} crowd index` : "crowd index"} now {fngNow != null ? `· F&G ${Math.round(fngNow)}` : ""}</div>
           <b style={{ color: dirColor(sentiment.direction), fontSize: 26 }}>
             {Math.round(sentiment.score)}
           </b>
         </div>
       </div>
 
+      <div className="bar-cap">market-crowd sentiment score (short ⇄ long) — contrarian extremes fade</div>
       <div className="track">
         <i style={{ ...bar, background: dirColor(sentiment.direction) }} />
         <em style={{ left: "50%" }} />
