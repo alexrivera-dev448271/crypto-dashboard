@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from cryptodash.analysis.service import normalize_symbol
 from cryptodash.api.deps import require_user
 from cryptodash.api.errors import BadRequest
+from cryptodash.config import get_settings
+from cryptodash.data.fetcher import reset_fetch_budget, set_fetch_budget
 from cryptodash.data.providers import DataError
 
 log = logging.getLogger("cryptodash.api.market")
@@ -30,9 +32,9 @@ def _df_to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     residual 'class' from an enriched frame) gets renamed to _1, which shifts
     every later field one position when mapped by attribute name.
     """
-    if df is None or df.empty:
-        return []
-    out = []
+    out: list[dict[str, Any]] = []
+    if df is None or getattr(df, "empty", True):
+        return out
     for row in df.tail(600).to_dict("records"):
         rec = {k: (None if v is None else v) for k, v in row.items() if k in _OHLCV_KEYS}
         ts = row.get("dt") or row.get("t_ms")
@@ -55,12 +57,15 @@ async def candles(request: Request, user=Depends(require_user),
     if not sym:
         raise BadRequest("symbol is required")
     service = request.app.state.service
+    token = set_fetch_budget(get_settings().analysis_timeout_s)
     try:
         df = await service.fetcher.candles(sym, interval, limit)
     except DataError as exc:
         from cryptodash.api.errors import UpstreamError
 
         raise UpstreamError(str(exc)) from exc
+    finally:
+        reset_fetch_budget(token)
     return {"symbol": sym, "interval": interval, "candles": _df_to_records(df)}
 
 
@@ -68,7 +73,11 @@ async def candles(request: Request, user=Depends(require_user),
 async def macro(request: Request, user=Depends(require_user)) -> dict:
     """Macro bundle (BTC / gold / Brent / M2) — the relations panel data."""
     service = request.app.state.service
-    bundle = await service.fetcher.macro_bundle()
+    token = set_fetch_budget(get_settings().analysis_timeout_s)
+    try:
+        bundle = await service.fetcher.macro_bundle()
+    finally:
+        reset_fetch_budget(token)
 
     out: dict[str, Any] = {}
     for name in ("bitcoin", "gold", "brent", "m2"):

@@ -3,8 +3,8 @@
 Architecture
 ------------
 An *embedded* local PostgreSQL 18 instance (managed via ``embedded-postgres``)
-reachable over a unix socket inside the project data dir — no external service,
-no public port, gitignored cluster.
+reachable over a unix socket inside the project data dir on POSIX, or over
+loopback TCP on Windows — no external service, no public port, gitignored cluster.
 
 Security model
 --------------
@@ -68,13 +68,29 @@ def _app_pool_kwargs() -> dict:
 class DB:
     def __init__(self) -> None:
         self._server = None
-        self.sock_host: str | None = None
+        self.sock_host: str | None = None   # unix-socket dir (POSIX) OR loopback host (TCP transport)
+        self.tcp_port: int | None = None    # set only when the server is reached over TCP (Windows)
         self._pool: AsyncConnectionPool | None = None   # constructed open=False; opened lazily
         self._pool_loop_id: int | None = None           # event-loop id that owns the open pool
 
     @property
     def is_started(self) -> bool:
         return self.sock_host is not None
+
+    def _conn_params(self) -> dict:
+        """psycopg connection kwargs for this transport (unix socket dir vs loopback TCP)."""
+        assert self.sock_host is not None, "DB.start() was never called"
+        if self.tcp_port is None:
+            return {"host": self.sock_host}          # POSIX: unix domain socket inside data dir
+        return {"host": self.sock_host, "port": str(self.tcp_port)}  # Windows: loopback TCP
+
+    def _conninfo_str(self, user: str) -> str:
+        """Keyword conninfo string for *user* against the embedded server."""
+        p = self._conn_params()
+        s = f"host={p['host']} dbname={DBNAME} user={user}"
+        if "port" in p:
+            s += f" port={p['port']}"
+        return s
 
     # ── lifecycle ─────────────────────────────────────────────────────────
     def start(self, pgdata_dir) -> None:
@@ -84,9 +100,17 @@ class DB:
         log.info("starting embedded postgres in %s", pgdata_dir)
         try:
             self._server = get_server(str(pgdata_dir), cleanup_mode=None)  # stopped on app exit
-            self.sock_host = str(pgdata_dir)
+            # POSIX: socket-only server, socket lives in the data dir (no public port).
+            # Windows: the library auto-falls back to loopback TCP on a local port.
+            pinfo = self._server.get_postmaster_info()
+            if pinfo is not None and getattr(pinfo, "socket_dir", None) and os.name != "nt":
+                self.sock_host, self.tcp_port = str(pinfo.socket_dir), None
+            elif pinfo is not None and pinfo.port:
+                self.sock_host, self.tcp_port = getattr(pinfo, "hostname", None) or "127.0.0.1", int(pinfo.port)
+            else:  # pragma: no cover - defensive; should never happen once server is up
+                self.sock_host, self.tcp_port = str(pgdata_dir), None
 
-            boot_params = dict(host=self.sock_host, user=BOOT_ROLE, autocommit=True)
+            boot_params = dict(self._conn_params(), user=BOOT_ROLE, autocommit=True)
             with psycopg.connect(dbname="postgres", **boot_params) as boot:
                 cur = boot.cursor()
                 exists = cur.execute("SELECT 1 FROM pg_database WHERE datname=%s", (DBNAME,)).fetchall()
@@ -108,10 +132,13 @@ class DB:
         except Exception as exc:  # noqa: BLE001 - wrap lifecycle errors uniformly
             self.stop()
             raise DBError(f"could not start embedded database: {exc}") from exc
-        log.info("postgres ready: %s (socket=%s)", DBNAME, self.sock_host)
+        log.info(
+            "postgres ready: %s (transport=%s%s)",
+            DBNAME, "tcp" if self.tcp_port else "unix-socket", f":{self.tcp_port}" if self.tcp_port else "",
+        )
 
     def _app_conninfo(self) -> str:
-        return f"host={self.sock_host} dbname={DBNAME} user={APP_ROLE}"
+        return self._conninfo_str(APP_ROLE)
 
     # ── pool plumbing ─────────────────────────────────────────────────────
     async def _ensure_pool(self) -> AsyncConnectionPool:
@@ -212,7 +239,7 @@ class DB:
         """Boot-role, autocommiting connection for migrations and user management."""
         assert self.sock_host is not None, "DB.start() was never called"
         pool = AsyncConnectionPool(
-            conninfo=f"host={self.sock_host} dbname={DBNAME} user={BOOT_ROLE}",
+            conninfo=self._conninfo_str(BOOT_ROLE),
             min_size=1, max_size=2, open=False, kwargs={"autocommit": True},
         )
         await pool.open(wait=True, timeout=30)
@@ -241,7 +268,7 @@ class DB:
             except Exception:  # noqa: BLE001 - best effort shutdown
                 log.debug("embedded postgres stop error (ignored)", exc_info=True)
             self._server = None
-        self.sock_host = None
+        self.sock_host, self.tcp_port = None, None
 
     # ── schema bootstrap (idempotent, sync boot connection) ───────────────
     def _bootstrap(self, cur) -> None:

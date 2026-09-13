@@ -25,6 +25,8 @@ from cryptodash.analysis.classic import score as classic_score
 from cryptodash.analysis.ict import score as ict_score
 from cryptodash.analysis.macro import score as macro_score_fn
 from cryptodash.analysis.sentiment import score as sentiment_score
+from cryptodash.config import get_settings
+from cryptodash.data.fetcher import _fenced, reset_fetch_budget, set_fetch_budget
 from cryptodash.data.providers import (
     BinanceProvider, DataError, FearGreedProvider, FredProvider, YahooProvider,
 )
@@ -47,6 +49,16 @@ class AnalysisService:
 
     # ── public API ────────────────────────────────────────────────────────
     async def analyse(self, *, owner_id: int, symbol: str, timeframes: list[str]) -> dict:
+        """Entry point. Bounded by a request-level fetch budget so that a stalled
+        upstream (blackholed network) can never hang the response — when the budget
+        runs out the remaining sources degrade to cached/stale data or are skipped."""
+        token = set_fetch_budget(get_settings().analysis_timeout_s)
+        try:
+            return await self._run(owner_id=owner_id, symbol=symbol, timeframes=timeframes)
+        finally:
+            reset_fetch_budget(token)
+
+    async def _run(self, *, owner_id: int, symbol: str, timeframes: list[str]) -> dict:
         t0 = time.monotonic()
         symbol_u = normalize_symbol(symbol)
         errors: list[str] = []
@@ -90,14 +102,26 @@ class AnalysisService:
         taker: float | None = None
         if kind == "crypto":
             try:
-                fg_df = await self.fng.index(limit=60)
+                fg_df = await _fenced(self.fng.index(limit=60), "fear&greed")
                 fng_now = float(fg_df["value"].iloc[-1]) if fg_df is not None and len(fg_df) else None
             except Exception as exc:  # noqa: BLE001 - optional input
                 errors.append(f"fear&greed: {exc}")
             perp = _perp_symbol(symbol_u)
-            funding = await self.binance.funding_rate(perp)
-            lsr = await self.binance.global_long_short_ratio(perp)
-            taker = await self.binance.taker_buy_sell(perp)
+            for label, fetcher_call in (
+                ("funding", lambda: self.binance.funding_rate(perp)),
+                ("long/short ratio", lambda: self.binance.global_long_short_ratio(perp)),
+                ("taker flow", lambda: self.binance.taker_buy_sell(perp)),
+            ):
+                try:
+                    value = await _fenced(fetcher_call(), label)
+                    if label == "funding":
+                        funding = value
+                    elif label == "long/short ratio":
+                        lsr = value
+                    else:
+                        taker = value
+                except Exception as exc:  # noqa: BLE001 - crowd input, never fatal
+                    errors.append(f"{label}: {exc}")
 
         sentiment_res = sentiment_score(
             fear_greed=fng_now, funding_rate_pct=funding,
@@ -163,7 +187,10 @@ class AnalysisService:
     # ── internals ───────────────────────────────────────────────────────
     async def _classify(self, symbol_u: str, errors: list[str]) -> str:
         try:
-            await self.binance.ticker(symbol_u if symbol_u.endswith("USDT") else f"{symbol_u}USDT")
+            await _fenced(
+                self.binance.ticker(symbol_u if symbol_u.endswith("USDT") else f"{symbol_u}USDT"),
+                "classify",
+            )
             return "crypto"
         except DataError as exc:
             # not on Binance → treat as macro/yahoo asset; caller will surface data errors per TF

@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     rl_api_per_min: int = 120
     rl_analysis_per_min: int = 40
 
+    # Hard wall-clock budget for one /analysis/recommend call. Under a stalled
+    # network (blackholed egress) the per-fetch timeouts may not all fire before
+    # this trips; instead of hanging the request we cut analysis short and return
+    # whatever partial result (cached series, engine scores) had completed.
+    analysis_timeout_s: float = 45.0
+
     log_level: str = "INFO"
 
     # Optional override for the base data dir (embedded postgres cluster + cache). In

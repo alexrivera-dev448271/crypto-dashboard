@@ -11,7 +11,11 @@ tenant GUC.
 """
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import logging
+import time
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
@@ -36,6 +40,12 @@ TTL: dict[str, timedelta] = {
 
 MACRO_TTL = timedelta(hours=6)
 
+# Hard wall-clock budget per individual upstream source attempt (seconds). A blackholed
+# network (SYN dropped / DNS stall) can outlive httpx's connect timeout because the hang
+# happens in getaddrinfo — so every candidate fetch is additionally fenced here. Completed
+# candidates are kept, only the one still running when this trips gets abandoned.
+FETCH_DEADLINE_S = 18.0
+
 # How stale a cached macro series may be before it must be refreshed — scaled to the
 # native update cadence of each series so monthly data (M2, global liquidity) can
 # actually hit cache instead of re-fetching every request.
@@ -52,6 +62,44 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+# ── fetch deadline plumbing (blackholed-network guard) ───────────────────────
+# A per-request budget set by AnalysisService.analyse(); every upstream source
+# attempt is fenced against min(FETCH_DEADLINE_S, remaining budget). ContextVar so
+# concurrent requests each carry their own deadline. When unset (e.g. background
+# warm jobs), only the per-source fence applies.
+_fetch_deadline: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "cryptodash_fetch_deadline", default=None)
+
+
+def set_fetch_budget(seconds: float) -> "contextvars.Token[float | None]":
+    """Start a request-level fetch budget of *seconds* (wall clock)."""
+    return _fetch_deadline.set(time.monotonic() + seconds)
+
+
+def reset_fetch_budget(token: "contextvars.Token[float | None]") -> None:
+    with suppress(LookupError):  # defensive; tokens are consumed within their own context
+        _fetch_deadline.reset(token)
+
+
+async def _fenced(coro, label: str):
+    """Run *coro* under the per-source deadline and any remaining request budget.
+
+    Either tripping raises DataError(label…) so callers treat it as one failed source.
+    If the request budget is already spent we fail fast without even attempting."""
+    dl = _fetch_deadline.get()
+    if dl is not None:
+        remaining = max(0.0, dl - time.monotonic())
+        if remaining <= 0:
+            raise DataError(f"{label}: request fetch budget exhausted")
+        timeout = min(FETCH_DEADLINE_S, remaining)
+    else:
+        timeout = FETCH_DEADLINE_S
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        raise DataError(f"{label}: fetch exceeded {FETCH_DEADLINE_S:.0f}s cap") from exc
+
+
 class DataFetcher:
     def __init__(self, binance: BinanceProvider, yahoo: YahooProvider, fred: FredProvider,
                  gold_price: GoldPriceProvider | None = None) -> None:
@@ -63,21 +111,34 @@ class DataFetcher:
     async def live_gold_spot(self) -> float | None:
         """Keyless XAU/USD spot from goldprice.dev (cross-check for the gold asset)."""
         if self.gold_price is not None:
-            return await self.gold_price.last_price()
+            try:
+                return await _fenced(self.gold_price.last_price(), "goldspot")
+            except DataError as exc:  # noqa: BLE001 - cross-check only, never fatal
+                log.debug("live gold spot unavailable: %s", exc)
         return None
 
     # ── candles (crypto via Binance; macro symbols via Yahoo as fallback) ──
     async def candles(self, symbol: str, interval: str = "1h", limit: int = 500) -> pd.DataFrame:
-        cached = await self._read_candles(symbol, interval)
-        if cached is not None and len(cached) >= max(30, min(limit, 120)):
-            return cached.tail(limit).reset_index(drop=True)   # fresh enough (checked in _read)
+        fresh = await self._read_candles(symbol, interval)
+        if fresh is not None and len(fresh) >= max(30, min(limit, 120)):
+            return fresh.tail(limit).reset_index(drop=True)   # fresh enough (checked in _read)
 
-        df = await self._fetch_candles(symbol, interval, limit)
+        try:
+            df = await self._fetch_candles(symbol, interval, limit)
+        except DataError:  # upstream unreachable → fall back to cache below (or re-raise if none)
+            if fresh is not None and len(fresh) >= 30:
+                return fresh.tail(limit).reset_index(drop=True)   # offline → serve last-known series
+            stale = await self._read_candles(symbol, interval, allow_stale=True)
+            if stale is not None and len(stale) >= 30:
+                log.warning("candles %s %s: upstream unreachable → serving stale cache (%d bars)",
+                            symbol, interval, len(stale))
+                return stale.tail(limit).reset_index(drop=True)
+            raise
         if df is not None and not df.empty:
             await self._write_candles(symbol, interval, df)
         return df
 
-    async def _read_candles(self, symbol: str, interval: str) -> pd.DataFrame | None:
+    async def _read_candles(self, symbol: str, interval: str, allow_stale: bool = False) -> pd.DataFrame | None:
         try:
             async with db.shared() as conn:
                 rows = await db.fetch_all(
@@ -91,7 +152,7 @@ class DataFetcher:
             # so cached and fresh candles are interchangeable downstream.
             df = pd.DataFrame(rows, columns=["ts_ms", "o", "h", "l", "c", "v"]).rename(columns={"ts_ms": "t_ms"})
             last_ts = datetime.fromtimestamp(int(df["t_ms"].iloc[-1]) / 1000, tz=UTC)
-            if _now() - last_ts > TTL.get(interval, timedelta(hours=1)) * 2:
+            if not allow_stale and _now() - last_ts > TTL.get(interval, timedelta(hours=1)) * 2:
                 return None
             df["dt"] = pd.to_datetime(df["t_ms"], unit="ms", utc=True)  # keep t_ms too (provider shape)
             return df
@@ -126,10 +187,13 @@ class DataFetcher:
         raise DataError(f"no data source could serve {symbol} (tried: {', '.join(tried)})") from last_exc
 
     async def _fetch_from(self, kind: str, ref: str, interval: str, limit: int) -> pd.DataFrame | None:
+        # Fence each source attempt against a blackholed network (DNS/SYN hang);
+        # honours the per-request fetch budget when one is active.
         if kind == "binance":
-            return await self.binance.candles(ref, interval, limit)
-        # kind == "yahoo"
-        return await self.yahoo.candles(ref, interval, limit)
+            coro = self.binance.candles(ref, interval, limit)
+        else:  # kind == "yahoo"
+            coro = self.yahoo.candles(ref, interval, limit)
+        return await _fenced(coro, f"candles:{ref}:{interval}")
 
     async def _write_candles(self, symbol: str, interval: str, df: pd.DataFrame) -> None:
         if "t_ms" not in df.columns or "dt" in df.columns and "c" not in df.columns:
@@ -217,7 +281,7 @@ class DataFetcher:
         if cached is not None and len(cached):
             return cached
         try:
-            s = await self.fred.series(series_id, limit=300)
+            s = await _fenced(self.fred.series(series_id, limit=300), f"fred:{series_id}")
             if s is not None and len(s) >= 60:
                 fresh = _to_value_df(s.rename(columns={"value": "c"}))
                 # persist with the cache contract ([dt, value]) so future reads hit cache
@@ -242,11 +306,11 @@ class DataFetcher:
             try:
                 df = None
                 if kind == "yahoo":
-                    df = await self.yahoo.candles(str(ref), "1d", limit=400)
+                    df = await _fenced(self.yahoo.candles(str(ref), "1d", limit=400), f"macro:{name}:{ref}")
                 elif kind == "binance_proxy":
-                    df = await self.binance.candles(str(ref), "1d", limit=400)
+                    df = await _fenced(self.binance.candles(str(ref), "1d", limit=400), f"macro:{name}:{ref}")
                 elif kind == "fred" and ref:
-                    s = await self.fred.series(str(ref), limit=300)
+                    s = await _fenced(self.fred.series(str(ref), limit=300), f"macro:{name}:{ref}")
                     if s is not None:
                         df = s.rename(columns={"value": "c"})
                 if df is not None and len(df) >= 60:
@@ -255,7 +319,9 @@ class DataFetcher:
                     return value_df
             except DataError as exc:
                 log.debug("macro %s source %s failed: %s", name, ref, exc)
-        return None
+        # Upstream unreachable (offline / budget spent): serve last-known values so the
+        # relations panel degrades gracefully instead of going blank.
+        return await self._read_macro(name, allow_stale=True)
 
     async def _read_macro(self, series_id: str, allow_stale: bool = False) -> pd.DataFrame | None:
         """Read a cached macro series. ``allow_stale`` returns the last known values even
