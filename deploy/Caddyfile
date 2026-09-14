@@ -1,0 +1,60 @@
+# CryptoDash — TLS edge (Caddy) for production HTTPS termination.
+#
+# Run this on the host that owns your domain; the API itself listens on :8400
+# bound to 127.0.0.1 behind Caddy. Caddy obtains/renews Let's Encrypt certs
+# automatically (ACME http-01), which satisfies:
+#   - "Enable HTTPS"          -> TLS 1.3 by default, HSTS emitted below
+#   - secure session cookies  -> app sets Secure cookies when APP_ENV=production
+#                                (see backend/src/cryptodash/config.py + security/auth.py)
+#
+# Start:  caddy run --config deploy/Caddyfile
+# Or as a service: see docker-compose.prod.yml in this folder.
+
+{
+	email admin@example.com          # <- ACME account email; change before first start
+	# If DNS/ports are not open for Let's Encrypt, use:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/dir
+}
+
+cryptodash.example.com {            # <- your domain (A record -> this host)
+
+	# Basic bot mitigation at the edge (rate-limit + UA floor).
+	@abuse {
+		<419 and not header User-Agent "Mozilla*"
+	}
+	abort @abuse 429
+
+	reverse_proxy /api/* 127.0.0.1:8400/api/ {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP        {remote_host}
+		transport http {
+			dial_timeout   5s
+			response_header_timeout 90s   # multi-TF analysis can run long; match app budget
+		}
+	}
+
+	reverse_proxy /ws/* 127.0.0.1:8400/ws/ {
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Everything else = the built React SPA (frontend/dist served by the API).
+	reverse_proxy 127.0.0.1:8400
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		# App sets its own CSP on API responses; this covers static shell.
+		Content-Security-Policy   "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'"
+	}
+
+	log {
+		output file /var/log/caddy/cryptodash.log {
+			roll_size 100mb
+			roll_keep 5
+		}
+		format json
+	}
+}

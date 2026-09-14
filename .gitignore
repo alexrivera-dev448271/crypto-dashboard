@@ -32,3 +32,7 @@ Thumbs.db
 
 # throwaway exploration scripts
 backend/probe_*.py
+
+# Offline distribution kits (large binary bundles; regenerate, never commit)
+offline-kits/
+deploy/certs/
